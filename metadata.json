@@ -1,0 +1,5 @@
+{
+  "name": "Office File Library",
+  "description": "A digital library to track office files with QR code checkouts.",
+  "requestFramePermissions": ["camera"]
+}

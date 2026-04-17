@@ -1,0 +1,151 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: files
+    // Fields:
+    //   - name: string (required)
+    //   - fileType: string (required)
+    //   - fileIdNo: string (required)
+    //   - company: string (required)
+    //   - year: string (required)
+    //   - location: string (required)
+    //   - status: string (required, 'available' or 'checked-out')
+    //   - checkedOutBy: string (optional)
+    //   - checkedOutByName: string (optional)
+    //   - fileMonitor: string (optional)
+    //   - fileMonitorId: string (optional)
+    //   - lastUpdated: timestamp (required)
+    //
+    // Collection: filterOptions
+    // Fields:
+    //   - category: string (required, 'fileType', 'company', 'year')
+    //   - value: string (required)
+    //
+    // Collection: users
+    // Fields:
+    //   - email: string (required)
+    //   - displayName: string (required)
+    //   - role: string (required, 'admin' or 'user')
+    //   - status: string (required, 'pending', 'approved', 'rejected')
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+          (request.auth.token.email == "team@sathibazar.in") ||
+          (request.auth.token.email == "vibhuti.11.shaha@gmail.com")
+        );
+    }
+
+    function isMonitor() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'monitor';
+    }
+
+    function isValidFile(data) {
+      return data.keys().hasAll(['name', 'fileType', 'fileIdNo', 'company', 'year', 'location', 'status', 'lastUpdated']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             data.fileType is string && data.fileType.size() > 0 &&
+             data.fileIdNo is string && data.fileIdNo.size() > 0 &&
+             data.company is string && data.company.size() > 0 &&
+             data.year is string && data.year.size() > 0 &&
+             data.location is string && data.location.size() > 0 && data.location.size() < 200 &&
+             data.status in ['available', 'checked-out'] &&
+             (!('activeHistoryId' in data) || data.activeHistoryId is string || data.activeHistoryId == null) &&
+             (!('fileMonitor' in data) || data.fileMonitor is string) &&
+             (!('fileMonitorId' in data) || data.fileMonitorId is string);
+    }
+
+    function isValidFilterOption(data) {
+      return data.keys().hasAll(['category', 'value']) &&
+             data.category in ['fileType', 'company', 'year'] &&
+             data.value is string && data.value.size() > 0;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'displayName', 'role', 'status']) &&
+             data.email is string && data.displayName is string &&
+             data.role in ['admin', 'user', 'monitor'] &&
+             data.status in ['pending', 'approved', 'rejected'];
+    }
+
+    function isValidAttachment(data) {
+      return data.keys().hasAll(['name', 'type', 'url', 'uploadedBy', 'uploadedByName', 'uploadedAt']) &&
+             data.name is string && data.name.size() > 0 &&
+             data.type is string &&
+             data.url is string &&
+             data.uploadedBy is string &&
+             data.uploadedByName is string;
+    }
+
+    // Rules
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId && isValidUser(request.resource.data) && 
+                      (request.resource.data.role == 'user' || 
+                       (request.resource.data.role == 'admin' && 
+                        (request.auth.token.email == "team@sathibazar.in" || 
+                         request.auth.token.email == "vibhuti.11.shaha@gmail.com")));
+      allow update: if (isAdmin() && isValidUser(request.resource.data)) || 
+                      (isAuthenticated() && request.auth.uid == userId && isValidUser(request.resource.data) && 
+                       request.resource.data.role == resource.data.role && 
+                       request.resource.data.status == resource.data.status);
+      allow delete: if isAdmin();
+    }
+
+    match /files/{fileId} {
+      allow read: if isAuthenticated();
+      allow create: if (isAdmin() || isMonitor()) && isValidFile(request.resource.data);
+      allow update: if (isAdmin() && isValidFile(request.resource.data)) || 
+                      (isAuthenticated() && isValidFile(request.resource.data) && 
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'checkedOutBy', 'checkedOutByName', 'lastUpdated', 'activeHistoryId']) &&
+                       (
+                         // Case 1: Checking out (available -> checked-out) - Anyone can do this
+                         (resource.data.status == 'available' && request.resource.data.status == 'checked-out') ||
+                         // Case 2: Transferring (checked-out -> checked-out) - Anyone can do this
+                         (resource.data.status == 'checked-out' && request.resource.data.status == 'checked-out') ||
+                         // Case 3: Returning (checked-out -> available) - Only Admin or assigned Monitor
+                         (resource.data.status == 'checked-out' && request.resource.data.status == 'available' && 
+                          (isAdmin() || (isMonitor() && resource.data.fileMonitorId == request.auth.token.email)))
+                       ));
+      allow delete: if isAdmin();
+
+      match /attachments/{attachmentId} {
+        allow read: if isAuthenticated();
+        allow create: if (isAdmin() || isMonitor()) && isValidAttachment(request.resource.data);
+        allow update: if isAdmin() || (isMonitor() && resource.data.uploadedBy == request.auth.uid && isValidAttachment(request.resource.data));
+        allow delete: if isAdmin();
+      }
+
+      match /history/{historyId} {
+        allow read: if isAdmin() || isMonitor();
+        allow create: if isAuthenticated() && 
+                      request.resource.data.userId == request.auth.uid;
+        allow update: if isAdmin() || isMonitor();
+      }
+    }
+
+    match /filterOptions/{optionId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() && isValidFilterOption(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /test/connection {
+      allow read: if true;
+    }
+  }
+}

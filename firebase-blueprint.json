@@ -1,0 +1,82 @@
+{
+  "entities": {
+    "File": {
+      "title": "File",
+      "description": "A physical file in the office",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "The name of the file" },
+        "fileType": { "type": "string", "description": "The type of the file" },
+        "fileIdNo": { "type": "string", "description": "The ID number of the file" },
+        "company": { "type": "string", "description": "The company associated with the file" },
+        "year": { "type": "string", "description": "The year or file number" },
+        "location": { "type": "string", "description": "Where the file is stored in the office" },
+        "status": { "type": "string", "enum": ["available", "checked-out"], "description": "Current status of the file" },
+        "checkedOutBy": { "type": "string", "description": "UID of the user who checked out the file" },
+        "checkedOutByName": { "type": "string", "description": "Display name of the user who checked out the file" },
+        "activeHistoryId": { "type": "string", "description": "ID of the current active history record" },
+        "fileMonitor": { "type": "string", "description": "The name of the person monitoring/uploading the file" },
+        "fileMonitorId": { "type": "string", "description": "The email ID of the person monitoring/uploading the file" },
+        "lastUpdated": { "type": "object", "description": "Timestamp of the last update" }
+      },
+      "required": ["name", "fileType", "fileIdNo", "company", "year", "location", "status"]
+    },
+    "FilterOption": {
+      "title": "Filter Option",
+      "description": "Editable options for file filters",
+      "type": "object",
+      "properties": {
+        "category": { "type": "string", "enum": ["fileType", "company", "year"], "description": "The category of the filter" },
+        "value": { "type": "string", "description": "The value of the filter option" }
+      },
+      "required": ["category", "value"]
+    },
+    "User": {
+      "title": "User",
+      "description": "A user of the system",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "description": "User email" },
+        "displayName": { "type": "string", "description": "User display name" },
+        "role": { "type": "string", "enum": ["admin", "user", "monitor"], "description": "User role" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"], "description": "User approval status" }
+      },
+      "required": ["email", "displayName", "role", "status"]
+    },
+    "Attachment": {
+      "title": "Attachment",
+      "description": "An uploaded document or image for a file",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "The name of the attachment" },
+        "type": { "type": "string", "description": "The MIME type of the attachment" },
+        "url": { "type": "string", "description": "The URL of the attachment" },
+        "uploadedBy": { "type": "string", "description": "UID of the user who uploaded the attachment" },
+        "uploadedByName": { "type": "string", "description": "Display name of the user who uploaded the attachment" },
+        "uploadedAt": { "type": "object", "description": "Timestamp of the upload" }
+      },
+      "required": ["name", "type", "url", "uploadedBy", "uploadedByName", "uploadedAt"]
+    },
+    "CheckoutHistory": {
+      "title": "Checkout History",
+      "description": "A record of a file being checked out and returned",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID of the user who checked out the file" },
+        "userName": { "type": "string", "description": "Display name of the user who checked out the file" },
+        "checkoutTimestamp": { "type": "object", "description": "When the file was checked out" },
+        "returnTimestamp": { "type": "object", "description": "When the file was returned" },
+        "returnedBy": { "type": "string", "description": "UID of the user who returned the file" },
+        "returnedByName": { "type": "string", "description": "Display name of the user who returned the file" }
+      },
+      "required": ["userId", "userName", "checkoutTimestamp"]
+    }
+  },
+  "firestore": {
+    "files": { "schema": "File", "description": "Collection of office files" },
+    "files/{fileId}/attachments": { "schema": "Attachment", "description": "Subcollection of attachments for a file" },
+    "files/{fileId}/history": { "schema": "CheckoutHistory", "description": "Subcollection of checkout history for a file" },
+    "users": { "schema": "User", "description": "Collection of users and their roles" },
+    "filterOptions": { "schema": "FilterOption", "description": "Collection of editable filter options" }
+  }
+}
